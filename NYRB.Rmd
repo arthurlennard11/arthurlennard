@@ -1,0 +1,528 @@
+---
+title: "Shots"
+output:
+  html_document:
+    df_print: paged
+date: "2024-11-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+
+#install.packages("rmarkdown")
+#install.packages("tinytex")
+#tinytex::install_tinytex()  # Lightweight LaTeX distribution
+
+# Please use the provided tracking data (which comes from one of our matches this season) to identify all shots attempted by player_id = 16937.
+# For each identified shot, please also include the frame_count and classify the shot based on its outcome ('Goal', 'Saved', 'Off Target', or 'Blocked').
+```
+
+```{r}
+#Player 16937 Shots:
+
+#11791 saved
+#11828 saved
+#107762 blocked  
+#135513 saved
+```
+
+```{r}
+tracks = read_csv("/Users/arthurlennard/Downloads/RBNY Data Science Intern Test (Spring 2025)/intern_test_tracks.csv") 
+tracks
+```
+
+```{r}
+#filter tracks for just that player 
+tracks_p = tracks %>%
+  filter(player_id == 16937 | player_id == -1)
+tracks_p
+
+```
+
+```{r}
+#modifying data so instead of having 2 rows for each frame, there's just one row per frame and it has different variables for player_x/y and ball_x/y 
+tracks_h <- tracks_p %>%
+  mutate(type = if_else(player_id == 16937, "player", "ball")) %>%
+  mutate(ball_x = if_else(type == "ball", pos_x, NA)) %>%
+  mutate(ball_y = if_else(type == "ball", pos_y, NA)) %>% 
+  mutate(ball_z = if_else(type == "ball", pos_z, NA)) %>%
+  mutate(player_x = if_else(type == "player", pos_x, NA)) %>%
+  mutate(player_y = if_else(type == "player", pos_y, NA)) %>%
+  mutate(player_z = if_else(type == "player", pos_z, NA)) %>%
+  mutate(ball_speed_x = if_else(type == "ball", speed_x, NA)) %>%
+  mutate(ball_speed_y = if_else(type == "ball", speed_y, NA)) %>%
+  mutate(player_speed_x = if_else(type == "player", speed_x, NA)) %>%
+  mutate(player_spped_y = if_else(type == "player", speed_y, NA)) 
+tracks_h
+
+tracks_h[3,20]
+```
+
+```{r}
+#condensing the 2 rows for each frame into one row, these loops take a while 
+
+numrows = nrow(tracks_h)
+
+for (i in 1:(numrows-1)){
+  if (is.na(tracks_h$player_x[i])){
+    tracks_h$player_x[i] = tracks_h$player_x[i+1]
+  }
+}
+
+tracks_h
+```
+
+```{r}
+#another long loop 
+
+for (i in 1:(numrows-1)){
+  if (is.na(tracks_h$player_y[i])){
+    tracks_h$player_y[i] = tracks_h$player_y[i+1]
+  }
+}
+
+tracks_h
+```
+
+```{r}
+#2 more long loops 
+
+for (i in 1:(numrows-1)){
+  if (is.na(tracks_h$player_spped_y[i])){
+    tracks_h$player_spped_y[i] = tracks_h$player_spped_y[i+1]
+  }
+}
+
+for (i in 1:(numrows-1)){
+  if (is.na(tracks_h$player_speed_x[i])){
+    tracks_h$player_speed_x[i] = tracks_h$player_speed_x[i+1]
+  }
+}
+
+tracks_h
+```
+
+
+```{r}
+tracks_h = tracks_h %>%
+  select(-player_z)
+tracks_n = na.omit(tracks_h)
+tracks_n = tracks_n %>%
+  select(-player_id, -team_id, -goalkeeper, -type, -pos_x, -pos_y, -pos_z, -type)
+tracks_n
+
+tracks_j = tracks_n %>%
+  select(-ball_speed_x, -ball_speed_y)
+tracks_j
+```
+
+```{r}
+clean = tracks_j %>%
+  filter((abs(player_x - ball_x) <= 1) & (abs(player_y - ball_y) <= 1))
+clean
+
+#clean = every time the player came within sqrt(2) meters of the ball 
+
+#sort by 1st and 2nd half 
+
+clean1 = clean %>%
+  filter(period == 1)
+clean2 = clean %>%
+  filter(period == 2)
+```
+
+```{r}
+ggplot(data = clean1) +
+  geom_point(aes(x = player_x, y = player_y))
+```
+
+```{r}
+#player's touches in the attacking third 
+
+clean1third = clean1 %>%
+  filter(player_x >= 17)
+
+ggplot(data = clean1third) +
+  geom_point(aes(x = player_x, y = player_y))
+
+clean1third
+```
+
+```{r}
+nrowsclean1 = nrow(clean1third)
+
+clean1ends = clean1third %>%
+  mutate(end = NA)
+
+for (i in 1:(nrowsclean1-1)){
+  clean1ends$end[i] = clean1ends$frame_count[i] - clean1ends$frame_count[i+1]
+}
+
+clean1ends
+
+clean1ends1 = clean1ends %>%
+  filter(end != -1)
+clean1ends1
+
+#every time in the 1st half when the ball was close to him and then it wasn't anymore 
+#basically this is each moment it leaves his foot 
+#now I just need to find out where the ball went after it left him 
+```
+
+```{r}
+#inital thoughts, 1st half 
+#this is all instances where the ball left his foot
+#"no" means the ball didn't get closer to the goal in the x direction after he kicked it  
+
+#11668 - no
+#11791 - likely 
+#11828 - likely
+#11899 - no
+#14520 - no
+#16708 - no
+#23199 - unlikely 
+#27259 - no
+#46317 - no
+#55648 - no
+#55685 - no 
+#55702 - no 
+#56345 - no 
+#57127 - no 
+#58318 - no 
+#60079 - no 
+#67796 - unlikely 
+#67945 - very likely 
+#68161 - this is like a corner 
+#82512 - very likely 
+#83924 - no
+#84240 - no
+#84265 - no
+tracks_j %>%
+  filter(frame_count >= 46317)
+```
+
+```{r}
+#same as before but for second half 
+
+clean2third = clean2 %>%
+  filter(player_x <= -17)
+
+nrowsclean2 = nrow(clean2third)
+
+clean2ends = clean2third %>%
+  mutate(end = NA)
+
+for (i in 1:(nrowsclean2-1)){
+  clean2ends$end[i] = clean2ends$frame_count[i] - clean2ends$frame_count[i+1]
+}
+
+clean2ends
+
+clean2ends1 = clean2ends %>%
+  filter(end != -1)
+clean2ends1
+
+```
+
+```{r}
+#inital thoughts for 2nd half part 1 
+
+#101140 - no 
+#102422 - no 
+#102490 - no
+#103801 - no 
+#105252 - no 
+#106817 - no 
+#107762 - very likely 
+#108009 - no
+#108316 - no 
+#108491 - no 
+#110829 - no 
+#112922 - no 
+#113604 - no 
+#113681 - no
+#114623 - very likely (goal?)
+#115312 - no 
+#125832 - likely 
+#125856 - likely 
+#126046 - no 
+#127338 - no 
+tracks_j %>%
+  filter(frame_count >= 114623)
+```
+
+```{r}
+clean2ends1
+```
+
+```{r}
+#initial thoughts for 2nd half part 2 
+
+#127460 - no 
+#135473 - likely 
+#135511 - likely 
+#136072 - likely 
+#138935 - no 
+#139000 - no 
+#139238 - maybe blocked 
+#142191 - no 
+#154302 - no 
+#154437 - no 
+#154538 - no 
+#154673 - no 
+#155020 - no 
+#160567 - no 
+#166174 - no 
+#168900 - no 
+tracks_j %>%
+  filter(frame_count >= 135513)
+```
+
+```{r}
+#final thoughts after plotting each instance 
+
+#11791 yes on target 
+#11828 yes on target 
+#23199 no 
+#67796 no 
+#67945 no 
+#82512 no 
+#107762 yes blocked  
+#114623 no 
+#125832 no 
+#125856 no 
+#135473 yes (135513) on target 
+#135511 ^
+#136072 no 
+#139238 no 
+
+#+/- 3.66 for y is the goal 
+```
+
+```{r}
+a1 = tracks_j %>%
+  filter(frame_count >= 11791) %>%
+  filter(frame_count <= 11805)
+
+ggplot(data = a1) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#shot on target, next player to touch it is other team's gk   
+
+a2 = tracks_j %>%
+  filter(frame_count >= 11828) %>%
+  filter(frame_count <= 11835)
+
+ggplot(data = a2) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#rebound from first one, shot on target again, saved again  
+```
+
+```{r}
+a3 = tracks_j %>%
+  filter(frame_count >= 23199) %>%
+  filter(frame_count <= 23237)
+
+ggplot(data = a3) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#no 
+
+a4 = tracks_j %>%
+  filter(frame_count >= 67796) %>%
+  filter(frame_count <= 67897)
+
+ggplot(data = a4) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#no
+
+```
+
+```{r}
+a5 = tracks_j %>%
+  filter(frame_count >= 67945) %>%
+  filter(frame_count <= 67964)
+
+ggplot(data = a5) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#i'm guessing overhit throughball 
+
+a6 = tracks_j %>%
+  filter(frame_count >= 82512) %>%
+  filter(frame_count <= 82588)
+
+ggplot(data = a6) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#cross
+```
+
+```{r}
+a7 = tracks_j %>%
+  filter(frame_count >= 107762) %>%
+  filter(frame_count <= 107841)
+
+ggplot(data = a7) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#maybe blocked shot actually 
+
+a8 = tracks_j %>%
+  filter(frame_count >= 114623) %>%
+  filter(frame_count <= 114732)
+
+ggplot(data = a8) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#cross and then foul 
+
+```
+
+```{r}
+a9 = tracks_j %>%
+  filter(frame_count >= 125832) %>%
+  filter(frame_count <= 125913)
+
+ggplot(data = a9) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#cross
+
+a10 = tracks_j %>%
+  filter(frame_count >= 125856) %>%
+  filter(frame_count <= 125913)
+
+ggplot(data = a10) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+```
+
+```{r}
+a11 = tracks_j %>%
+  filter(frame_count >= 135473) %>%
+  filter(frame_count <= 135626)
+#135547
+#135473
+ggplot(data = a11) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#shot to the near post, keeper saves, doesn't hold on, eventually jumps on it.
+```
+
+```{r}
+a12 = tracks_j %>%
+  filter(frame_count >= 136050) %>%
+  filter(frame_count <= 136191)
+
+ggplot(data = a12) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") +
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+  #coord_cartesian(xlim = c(-52, -35.5), ylim = c(-20.16, 20.16))
+
+a13 = tracks_j %>%
+  filter(frame_count >= 139238) %>%
+  filter(frame_count <= 139349)
+
+ggplot(data = a13) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+```
+
+```{r}
+tracks %>%
+  filter(frame_count == 136071)
+```
+
+```{r}
+tracks %>%
+  filter(player_id == -1) %>%
+  filter(pos_x >=-0.5 & pos_x <= 0.5) %>%
+  filter(pos_y >=-0.5 & pos_y <= 0.5)
+```
+
+```{r}
+#potential goals 
+#kick off frames 
+#32821
+#41775
+#57199
+#115754
+
+```
+
+```{r}
+b1 = tracks %>%
+  filter(player_id == -1) %>%
+  filter(frame_count >= 30400) %>%
+  filter(frame_count <= 32821)
+
+ggplot(data = b1) +
+  geom_point(aes(x = pos_x, y = pos_y)) + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+bb1 = tracks_j %>%
+  filter(frame_count >= 30400) %>%
+  filter(frame_count <= 32821)
+
+ggplot(data = bb1) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#other team scoring 
+
+```
+
+```{r}
+bb2 = tracks_j %>%
+  filter(frame_count >= 115240) %>%
+  filter(frame_count <= 115754)
+
+ggplot(data = bb2) +
+  geom_point(aes(x = player_x, y = player_y)) + 
+  geom_point(aes(x = ball_x, y = ball_y), color = "green") + 
+  coord_cartesian(xlim = c(-52, 52), ylim = c(-34, 34))
+
+#corner goal i think
+#1-1?
+```
+
+```{r}
+#Final Answer 
+#Player 16937 Shots:
+
+#11791 saved
+#11828 saved
+#107762 blocked  
+#135513 saved
+```
+
